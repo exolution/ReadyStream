@@ -29,6 +29,10 @@ ReadyStream是一个链式Transform流封装。提供非常方便的流操作。
 因此在各个阶段，无论是开发者还是我的框架只需要处理这个统一的readystream实例就够了。例如在经过了业务中间件之后，后续的中间件都可以基于这一个readyStream进行数据加工(如gzip)   
 
 #如何使用？
+
+####安装
+npm install ready-stream
+
 #####创建ReadyStream
 ```javascript
 
@@ -79,7 +83,7 @@ stream.put("hahaha\n");
  */
 stream.write("sync\n");
 ```
-#####处理加工数据-串行接水管
+#####处理加工数据-串联接水管
 ```javascript
 stream.pipe(function(chunk,encoding,next){
     //[chunk]:数据块(是一个buffer)[encoding]:数据的编码[next]:执行下一步的回调函数   
@@ -130,3 +134,31 @@ hahaha
 after
  */
 ```
+#####并联接水管
+稍后补图
+
+#####put异步数据
+需要自己实现WriteRequest接口 也就是实现doWrite(readyStream)方法。用来定义你的写入逻辑。
+下面是一个简单的例子 复杂且有实际意义的例子请参见
+```javascript
+function DelayWriteRequest(data,delay){
+    this.data=_serializeData(data);
+    this.delay=delay;
+}
+DelayWriteRequest.prototype.doWrite=function(readyStream){
+    //打开正在写入状态
+    readyStream._writing=true;
+    var self=this;
+    setTimeout(function(){
+        //写入数据 这里尽量使用原生的write 而不是put
+        readyStream.write(self.data);
+        //结束正在写入状态
+        readyStream._writing=false;
+        //让readyStream去完成后续的写入请求
+        readyStream.drain();
+    },this.delay);
+};
+```
+######实例
+到现在说了这么多 可能你还是不知道readyStream有啥用？
+那好吧，我就实现各简单的gulp来说明吧
