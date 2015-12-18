@@ -1,91 +1,57 @@
-/**
- * Created by godsong on 15-12-16.
- */
-/**
- * Created by godsong on 15-5-4.
- */
+
 var Transform = require('stream').Transform;
 var Readable = require('stream').Readable;
 var Writable = require('stream').Writable;
 var Util = require('util');
 var Fs = require('fs');
-var Http = require('http');
-var EventEmitter = require('events').EventEmitter;
 var rawPipe = Readable.prototype.pipe;
 var rawEnd = Writable.prototype.end;
-var slice = Array.prototype.slice;
-
-
-//A transform stream as avatar of HttpServerResponse
-//A extended pipe() you can pipe to a function as stream resolver(wrap by a Transform Stream)
-//Piped stream while linked in readystream
-function ReadyStream(response, config) {
-    if(!(this instanceof ReadyStream)) {
-        return new ReadyStream();
-    }
-
+/**
+ * ReadyStream
+ * @author exolution
+ * @version 0.10
+ * @since 2015
+ */
+function ReadyStream() {
     //it's a transform stream
+    // 继承于transform类
     Transform.call(this);
-    this._transform = function(chunk, encoding, next) {
-        this.push(chunk);
-        next();
-    };
-    this.timestamp=process.hrtime();
-    this._writeReq = [];
+    //write Request queue for ensure the sequence of sync write operation
+    //写请求队列  用来确保一系列异步写操作的顺序性
+    this._writeRequest = [];
+    //whether a sync write operation in progress
+    //是否正在执行写操作
     this._writing = false;
+    //delayed end
+    //延迟的end信息 当前stream有异步的写入操作（如writeFile）此时不能立即执行end需要等所有的异步写入操作都完成后再执行end
     this._end = null;
-    //stream link
-    // because readystream need to tranfered between filters
-    // so piped always linked to itself
+    //实际上它本身是一系列transform流的链 它内部永远保存最新流经的transform流的引用
+    //in fact,it's a chain of transform stream.it hold the latest transform stream which data flowed in
     this.currentStream = this;
 
-    //save the HttpServerResponse
-    this._response = response;
-    //just pipe to response once
-    this._responsed = false;
-    //hack for response's "finished" property
-    this.finished = false;
-    Object.defineProperties(this, {
-        'statusCode' : {
-            enumerable : true,
-            set        : function(v) {
-                response.statusCode = v;
-            },
-            get        : function() {
-                return response.statusCode;
-            }
-        },
-        '_headers'   : {
-            enumerable : true,
-            set        : function(v) {
-                response._headers = v;
-            },
-            get        : function() {
-                return response._headers;
-            }
-        }
-    })
 }
 Util.inherits(ReadyStream, Transform);
 
-
-ReadyStream.prototype.response = function() {
-    this.pipe(this._response);
+//implement _transform
+ReadyStream.prototype._transform=function(chunk, encoding, next) {
+    this.push(chunk);
+    next();
 };
-//老方法 准备废弃
-ReadyStream.prototype.join = function(files) {
-    var readyStream=this;
-    files.forEach(function(file){
-        readyStream.writeFile(file);
-    })
 
-};
-//高能预警！这是本类的核心
-//扩展的pipe
-//可以把流pipe到一个函数里 这个函数左右流的加工函数（实际上这个函数会被封装成transform stream）
-//buffered变量为true时 会buffer所有的流数据 一次性调用这个加工函数
-// 否则 可能会调用多次（流本身就不是一次性写完的）
-ReadyStream.prototype.pipe = function(dest, buffered) {
+/**
+ * extended pipe
+ * you can pipe the stream to a function which as processor of this stream data
+ * in fact,this function will be encapsulated to a transform stream.
+ *
+ * 扩展的pipe
+ * 引流
+ * 把当前的数据流引入到一个管子里 这个管子由dest参数指定，管子可以是一个函数 这个函数作为流的加工函数（实际上这个函数会被封装成transform stream）
+ * buffered参数为true时 会buffer所有的流数据 等流数据写入完成后一次性调用这个加工函数
+ * 否则 可能会调用多次（流本身就不是一次性写完的）
+ * bypass代表是否分流 默认为false 意思是正常情况下 每次调用pipe 就会给流接一个管子 这些管子是依次串联的
+ * 如果bypass =true 这些管子则会并联的接起来。另外如果pipe到一个只可写不可读的单向流 默认分流
+*/
+ReadyStream.prototype.pipe = function(dest, buffered,bypass) {
     if(typeof dest === 'function') {
         var transform = new Transform();
         transform._transform = dest;
@@ -105,65 +71,50 @@ ReadyStream.prototype.pipe = function(dest, buffered) {
             transform._transform = dest;
         }
         rawPipe.call(this.currentStream, transform);
-        this.currentStream = transform;
+        if(!bypass)this.currentStream =transform;
     }
     else {
-        if(dest instanceof Http.ServerResponse) {
 
-            if(!this._responsed) {
-                rawPipe.call(this.currentStream, dest);
-                this._responsed = true;
-            }
-            else {
-                return this;
-            }
-        }
-        else {
-            rawPipe.call(this.currentStream, dest);
-        }
-        if(dest.readable) {
+        rawPipe.call(this.currentStream, dest);
+        if(dest.readable&&!bypass) {
             this.currentStream = dest;
         }
-
     }
     return this;
 };
-ReadyStream.prototype.writeFile = function(path) {
-    this._writeReq.push({
-        type : 'file',
-        path : path
-    });
-    if(!this._writing) {
-        this._writing = true;
-        this.doWriting();
-    }
+/**
+ * 分流stream
+ * */
+ReadyStream.prototype.bypass=function(dest,buffered){
+    return this.pipe(dest,buffered,true);
+};
+/*
+* 写入文件数据 这是一个异步的写操作
+* 如果多次调用此方法 后续的写操作只有在上一个文件全部写入后才会执行
+* */
+ReadyStream.prototype.writeFile = function(path,config) {
+    this.inflow(Fs.createReadStream(path,config));
 
 };
-
+ReadyStream.prototype.inflow=function(readableStream){
+    this._writeRequest.push(new StreamWriteRequest(readableStream));
+    this.doWrite();
+};
+/*
+* 异步写操作
+* 异步写操作会等待之前所有的异步写操作完成之后才会写入
+* */
 ReadyStream.prototype.syncWrite = function(data) {
-    switch(typeof data) {
-        case 'object':
-            if(!Buffer.isBuffer(data)) {
-                data = JSON.stringify(data);
-            }
-            break;
-        case 'number':
-            data = data + '';
-            break;
+    if(typeof data.doWrite==='function'){
+        this._writeRequest.push(data);
     }
-    this._writeReq.push({
-        type : 'data',
-        data : data
-    });
-    if(!this._writing) {
-        this.doWriting();
+    else {
+        this._writeRequest.push(new DataWriteRequest(data));
     }
+    this.doWrite();
 };
 ReadyStream.prototype.end = function(chunk, encoding, cb) {
-    console.trace('end',this._writing);
     if(!this._writing) {
-        var delay=process.hrtime(this.timestamp);
-        console.log('delay:',delay[0]>0?delay[0]+'s'+' '+(delay[1]/10e5).toFixed(3)+'ms':(delay[1]/10e5).toFixed(3));
         rawEnd.call(this, chunk, encoding, cb);
     }
     else {
@@ -174,77 +125,91 @@ ReadyStream.prototype.end = function(chunk, encoding, cb) {
         }
     }
 };
-ReadyStream.prototype.doWriting = function() {
+ReadyStream.prototype.doWrite = function() {
 
-    var readyStream = this;
-    var entry = this._writeReq.shift();
-    if(entry) {
-        if(entry.type === 'file') {
-            var file = Fs.createReadStream(entry.path, {highWaterMark : 40});
-            file.pipe(this, {
-                end : false
-            });
-            file.on('end', function() {
-                readyStream._writing = false;
-                readyStream.doWriting();
-                entry = null;
-            })
+    if(!this._writing) {
+        var writeRequest = this._writeRequest.shift();
+        if(writeRequest) {
+            writeRequest.doWrite(this);
         }
-        else if(entry.type === 'data') {
-            this.write(entry.data);
-            this._response.write('B');
-            this.doWriting();
-        }
-    }
-    else {
-        console.log(2222)
-        if(this._end) {
-            var delay=process.hrtime(this.timestamp);
-            console.log('delay:',delay[0]>0?delay[0]+'s'+' '+(delay[1]/10e5).toFixed(3)+'ms':(delay[1]/10e5).toFixed(3));
+        else if(this._end){
             rawEnd.call(this, this._end.chunk, this._end.encoding, this._end.cb);
         }
     }
 };
-
-ReadyStream.prototype.writeHead = function(code, reason, headers) {
-    this._response.writeHead(code, reason, headers);
-};
-ReadyStream.prototype.setHeader = function(name, value) {
-    this._response.setHeader(name, value);
-};
-ReadyStream.prototype.getHeader = function(name) {
-    return this._response.getHeader(name);
-};
-ReadyStream.prototype.removeHeader = function(field) {
-    this._response.removeHeader(field);
-};
-module.exports = ReadyStream;
-
-function sequence(files, dest) {
-    var file = files.shift();
-    var stream = Fs.createReadStream(file);
-    if(files.length > 0) {
-        stream.pipe(dest, {end : false});
-        stream.on('end', function() {
-            sequence(files, dest);
-        })
+function _serializeData(data){
+    if(typeof data=='object'){
+        if(!Buffer.isBuffer(data)){
+            return JSON.stringify(data);
+        }
+    }
+    else if(data!==undefined&&data!==null){
+        return data.toString();
     }
     else {
-        stream.pipe(dest);
+        return "";
     }
 }
 
-/*var rs = new ReadyStream(process.stdout);
- rs.writeFile('./test2.js');
- rs.syncWrite('\n111\n');
- rs.writeFile('./test.js');
- rs.pipe(function(chunk, enc, done) {
- this.push('before');
- this.push(chunk);
- this.push('after');
- done();
- }, true);
- rs.syncWrite('hahaha');
- rs.end();
- rs.response();*/
+function StreamWriteRequest(stream){
+    if(stream.readable) {
+        this.stream = stream;
+    }
+    else{
+        new Error("can't write an unreadable stream");
+    }
+}
+StreamWriteRequest.prototype.doWrite=function(readyStream){
+    readyStream._writing=true;
+    this.stream.pipe(this, {
+        end : false
+    });
+    this.stream.on('end', function() {
+        readyStream._writing=false;
+        //fixme 是否要使用nextTick做成异步的
+        readyStream.doWrite();
+    })
+};
+function DataWriteRequest(data){
+   this.data=_serializeData(data);
+}
+DataWriteRequest.prototype.doWrite=function(readyStream){
+    readyStream.write(this.data);
+    //fixme 是否要使用nextTick做成异步的
+    readyStream.doWrite();
+};
+var RS=module.exports = function(data){
+    var stream= new ReadyStream();
+    if(data.readable){
+        stream.inflow(data);
+    }
+    else{
+        stream.write(_serializeData(data));
+    }
+    return stream;
+};
+
+var rs=new RS("helloworld");
+rs.syncWrite({a:1});
+rs.pipe(function(chunk,enc,done){
+   this.push("before1\n");
+    this.push(chunk);
+    this.push("after1\n");
+    done();
+},true);
+rs.pipe(Fs.createWriteStream('./out1.txt'));
+rs.pipe(function(chunk,enc,done){
+    this.push("before2\n");
+    this.push(chunk);
+    this.push("after2\n");
+    done();
+},true);
+rs.syncWrite("hhh");
+rs.pipe(process.stdout);
+rs.pipe(Fs.createWriteStream('./out.txt'));
+
+rs.end();
+setTimeout(function(){
+},1000)
+
 

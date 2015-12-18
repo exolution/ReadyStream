@@ -1,5 +1,5 @@
 {
-  "name": "ReadyStream",
+  "name": "ready-stream",
   "version": "0.1.0",
   "main": "index.js",
   "description": "A Wrapped Transform Stream",
@@ -10,17 +10,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git://github.com/exolution/kodojs"
+    "url": "git://github.com/exolution/ReadyStream"
   },
   "keywords": [
-    "web",
-    "app",
-    "http",
-    "mvc",
-    "application",
-    "framework",
-    "middleware",
-    "generator",
-    "yield"
-  ],
+    "stream",
+    "transform",
+    "through"
+  ]
 }
