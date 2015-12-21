@@ -116,6 +116,9 @@ ReadyStream.prototype.inflow=function(readableStream){
 * 如果之前没有异步写操作 则会立即（同步）写入数据
 * */
 ReadyStream.prototype.put = function(data) {
+    if(data===null||data===undefined){
+        return null;
+    }
     if(typeof data.doWrite === 'function') {
         var writeRequest=data;
     }
@@ -170,6 +173,9 @@ function _serializeData(data){
         if(!Buffer.isBuffer(data)){
             return JSON.stringify(data);
         }
+        else {
+            return data;
+        }
     }
     else if(data!==undefined&&data!==null){
         return data.toString();
@@ -181,6 +187,9 @@ function _serializeData(data){
 
 
 function DataWriteRequest(data){
+    if(data===undefined||data===null){
+        return null;
+    }
    this.data=_serializeData(data);
 }
 DataWriteRequest.prototype.doWrite=function(readyStream){
