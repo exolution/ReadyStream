@@ -22,7 +22,7 @@ ReadyStream是一个链式Transform流封装。提供非常方便的流操作。
 ######为什么要是链式的？  
 正常情况下一个可读流通过readable.pipe(dest) 引流到另外一个stream之后 你想继续pipe就只能在这个另外的流(dest)上pipe。
 而ReadyStream则会保持最后一个dest的引用，每次pipe是在基于这个readystream的dest引用，所以可以针对这一个readystream 实例一路pipe管子接到死,当然也同时保留并联pipe的能力（我这里称之为分流bypass）  
-######然而这有什么用呢？
+######然而链式有什么用呢？
 想来想去其实场景并不多（囧rz），一般用于框架中需要暴露一个单例的stream给用户（开发者）。而这个stream又可能经过一系列的管子进行处理，如果用传统pipe就没办法一直基于这个stream进行处理，你必须像接力一样一路追踪下去。  
 在我的MVC框架中，我使用ReadyStream代替了http response，是因为response是个writable只能写数据，而无法pipe进行处理。  
 所以我将ReadyStream暴露给用户可以让用户方便的进行数据写入和处理，而且上面也说了，链式让readystream可以以单例的形式存在，
@@ -135,11 +135,12 @@ after
  */
 ```
 #####并联接水管（我更喜欢称之为分流）
-![图1](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
+
+![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
 #####put异步数据
 需要自己实现WriteRequest接口 也就是实现doWrite(readyStream)方法。用来定义你的写入逻辑。
-下面是一个简单的例子 复杂且有实际意义的例子请参见
+下面是一个简单的例子 复杂且有实际意义的例子请参见[例子](https://github.com/exolution/ReadyStream/blob/master/ReadyStream.js)
 ```javascript
 function DelayWriteRequest(data,delay){
     this.data=_serializeData(data);
