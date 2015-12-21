@@ -1,5 +1,5 @@
 # ReadyStream
-一个简单好用的数据流封装
+一个简单易用的数据流封装，让你快速运用stream的强大威力。
 
 ##什么是流(Stream)?
 （已经了解stream的可以跳过这一段扯淡）  
@@ -22,7 +22,7 @@ ReadyStream是一个链式Transform流封装。提供非常方便的流操作。
 ######为什么要是链式的？  
 正常情况下一个可读流通过readable.pipe(dest) 引流到另外一个stream之后 你想继续pipe就只能在这个另外的流(dest)上pipe。
 而ReadyStream则会保持最后一个dest的引用，每次pipe是在基于这个readystream的dest引用，所以可以针对这一个readystream 实例一路pipe管子接到死,当然也同时保留并联pipe的能力（我这里称之为分流bypass）  
-######然而这有什么用呢？
+######然而链式有什么用呢？
 想来想去其实场景并不多（囧rz），一般用于框架中需要暴露一个单例的stream给用户（开发者）。而这个stream又可能经过一系列的管子进行处理，如果用传统pipe就没办法一直基于这个stream进行处理，你必须像接力一样一路追踪下去。  
 在我的MVC框架中，我使用ReadyStream代替了http response，是因为response是个writable只能写数据，而无法pipe进行处理。  
 所以我将ReadyStream暴露给用户可以让用户方便的进行数据写入和处理，而且上面也说了，链式让readystream可以以单例的形式存在，
@@ -134,12 +134,12 @@ hahaha
 after
  */
 ```
-#####并联接水管
-稍后补图
+#####并联接水管（我更喜欢称之为分流）
+![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
 #####put异步数据
 需要自己实现WriteRequest接口 也就是实现doWrite(readyStream)方法。用来定义你的写入逻辑。
-下面是一个简单的例子 复杂且有实际意义的例子请参见
+下面是一个简单的例子 复杂且有实际意义的例子请参见[例子HttpWriteRequest](https://github.com/exolution/ReadyStream/blob/master/demo2.js)
 ```javascript
 function DelayWriteRequest(data,delay){
     this.data=_serializeData(data);
@@ -161,4 +161,35 @@ DelayWriteRequest.prototype.doWrite=function(readyStream){
 ```
 ######实例
 到现在说了这么多 可能你还是不知道readyStream有啥用？
-那好吧，我就实现各简单的gulp来说明吧
+那好吧，我就实现一个简单的gulp功能来说明吧
+```javascript
+var ReadyStream=require('../ReadyStream');
+var UglifyJS = require("uglify-js");
+var Fs=require('fs');
+var Path=require('path');
+
+//主要功能：
+//把当前文件夹下的js合并压缩成一个文件 并同时保存一个未压缩的版本
+
+var stream=new ReadyStream();
+Fs.readdir('./',function(err,files){
+    //遍历当前文件夹
+    files.forEach(function(file){
+        if(Path.extname(file)==='.js') {
+            //写入文件 且每个文件开头加上文件名注释
+            stream.put('\n/*========file:' + file + '========*/\n');
+            stream.writeFile(file);
+        }
+    })
+});
+//分流写入文件 保存一个未压缩版本
+stream.pipe(Fs.createWriteStream("./pack.js"));
+
+stream.pipe(function(chunk,encoding,next){
+    //压缩处理
+    this.push(UglifyJS.minify(chunk.toString(), {fromString: true}));
+    next()
+},true);;
+//分流写入文件，保存压缩版本
+stream.pipe(Fs.createWriteStream("./pack.min.js"));
+```
