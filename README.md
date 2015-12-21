@@ -135,12 +135,11 @@ after
  */
 ```
 #####并联接水管（我更喜欢称之为分流）
-
 ![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
 #####put异步数据
 需要自己实现WriteRequest接口 也就是实现doWrite(readyStream)方法。用来定义你的写入逻辑。
-下面是一个简单的例子 复杂且有实际意义的例子请参见[例子](https://github.com/exolution/ReadyStream/blob/master/ReadyStream.js)
+下面是一个简单的例子 复杂且有实际意义的例子请参见[例子HttpWriteRequest](https://github.com/exolution/ReadyStream/blob/master/demo2.js)
 ```javascript
 function DelayWriteRequest(data,delay){
     this.data=_serializeData(data);
