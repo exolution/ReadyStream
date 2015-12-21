@@ -1,5 +1,5 @@
 # ReadyStream
-一个简单好用的数据流封装
+一个简单易用的数据流封装，让你快速运用stream的强大威力。
 
 ##什么是流(Stream)?
 （已经了解stream的可以跳过这一段扯淡）  
@@ -134,8 +134,8 @@ hahaha
 after
  */
 ```
-#####并联接水管
-稍后补图
+#####并联接水管（我更喜欢称之为分流）
+![图1](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
 #####put异步数据
 需要自己实现WriteRequest接口 也就是实现doWrite(readyStream)方法。用来定义你的写入逻辑。
@@ -161,4 +161,35 @@ DelayWriteRequest.prototype.doWrite=function(readyStream){
 ```
 ######实例
 到现在说了这么多 可能你还是不知道readyStream有啥用？
-那好吧，我就实现各简单的gulp来说明吧
+那好吧，我就实现一个简单的gulp功能来说明吧
+```javascript
+var ReadyStream=require('../ReadyStream');
+var UglifyJS = require("uglify-js");
+var Fs=require('fs');
+var Path=require('path');
+
+//主要功能：
+//把当前文件夹下的js合并压缩成一个文件 并同时保存一个未压缩的版本
+
+var stream=new ReadyStream();
+Fs.readdir('./',function(err,files){
+    //遍历当前文件夹
+    files.forEach(function(file){
+        if(Path.extname(file)==='.js') {
+            //写入文件 且每个文件开头加上文件名注释
+            stream.put('\n/*========file:' + file + '========*/\n');
+            stream.writeFile(file);
+        }
+    })
+});
+//分流写入文件 保存一个未压缩版本
+stream.pipe(Fs.createWriteStream("./pack.js"));
+
+stream.pipe(function(chunk,encoding,next){
+    //压缩处理
+    this.push(UglifyJS.minify(chunk.toString(), {fromString: true}));
+    next()
+},true);;
+//分流写入文件，保存压缩版本
+stream.pipe(Fs.createWriteStream("./pack.min.js"));
+```
