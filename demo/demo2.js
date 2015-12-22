@@ -13,8 +13,6 @@ function HttpWriteRequest(url){
 }
 //实现doWrite方法
 HttpWriteRequest.prototype.doWrite=function(readyStream){
-    //因为是异步的，必须打开readystream的写入锁
-    readyStream._writing=true;
     var urlObj = Url.parse(this.url);
     var request = Http.request({
         host:urlObj.hostname,
@@ -30,7 +28,6 @@ HttpWriteRequest.prototype.doWrite=function(readyStream){
         res.on('end', function() {
             if(res.statusCode == 200) {
                 //http数据读完了 关闭写入锁
-                readyStream._writing=false;
                 //通知readyStream去完成后续的写入任务（吸干 好吧我邪恶了）
                 readyStream.drain();
             }
@@ -42,10 +39,6 @@ var stream=new ReadyStream();
 
 stream.put(new HttpWriteRequest('http://www.jd.com/robots.txt'));
 stream.put("end");
-//stream.end();
 
-stream.pipe(function(chunk,enc,next){
- console.log(chunk.toString());
-},true);
 
 stream.pipe(process.stdout);

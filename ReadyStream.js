@@ -53,12 +53,10 @@ function ReadyStream(config,transform) {
     });
 }
 Util.inherits(ReadyStream, Transform);
-
 //implement _transform
 ReadyStream.prototype._transform=function(chunk, encoding, next) {
     next(null,chunk);
 };
-
 /**
  * extended pipe
  * you can pipe the stream to a function which as processor of this stream data
@@ -116,7 +114,6 @@ ReadyStream.prototype.bypass=function(dest,buffered){
 * */
 ReadyStream.prototype.writeFile = function(path,config,manualEnd) {
     this.inflow(Fs.createReadStream(path,config),manualEnd);
-
 };
 ReadyStream.prototype.inflow=function(readableStream,manualEnd){
     readableStream.pipe(this,manualEnd?{end:false}:undefined);
@@ -164,7 +161,6 @@ ReadyStream.prototype.end = function(chunk, encoding, cb) {
         else{
             this.drain();
         }
-
     }
 };
 ReadyStream.prototype.drain = function() {
@@ -195,8 +191,6 @@ function _serializeData(data){
         return "";
     }
 }
-
-
 function DataWriteRequest(data){
     if(data===undefined||data===null){
         return null;
@@ -216,8 +210,6 @@ StreamWriteRequest.prototype.doWrite=function(readyStream){
     readyStream._writingSource=this.stream;
     this.stream.resume();
 };
-
-
 module.exports = function(config,transform){
     return new ReadyStream(config,transform);
 };
