@@ -17,7 +17,7 @@
 ##为什么要用ReadyStream （Why tree newbie?）
 （讨厌吹牛逼的可以跳过这一段广告）
 ####※上手简单
-ReadyStream通俗易理解的将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感
+ReadyStream 将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感，并且引导让你写出更清晰的程序结构。
 ####※强大的异步写入/流入
 ReadyStream对写入操作做了封装，归一化同步写入还是异步写入。写入操作会自动按顺序依次写入，无论是同步的还是异步的（如写入一个文件）。  
 也就是说自动帮你管理前一个写入操作完成后才会执行后续的写入操作。而你只需要写同步风格的代码即可。
@@ -54,8 +54,8 @@ npm install ready-stream
 
 //这样就创建了一个空的ReadyStream
 var stream=new ReadyStream();
-//其实ReadyStream接收连个参数，一般用不上。
-//而且需要你对stream系统有比较深的了解。如本身的_transform和ObjectMode等配置
+//其实ReadyStream接收两个参数，一般用不上。
+//而且需要你对stream系统有比较深的了解。如流本身的_transform和ObjectMode等配置
 //如有需要请看源码
 ```
 #####写入数据
@@ -265,5 +265,5 @@ stream.pipe(function(chunk,encoding,next){
 stream.pipe(Fs.createWriteStream("./pack.min.js"));
 ```
 ####联系作者
-如果有什么问题和建议，欢迎来吐槽~~
+如果有什么问题和建议，欢迎来吐槽~~  
 吐槽热线：tanhawk#163.com
