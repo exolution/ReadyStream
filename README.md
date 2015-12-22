@@ -15,9 +15,9 @@
 `我的ReadyStream就是对这transform流的一种封装`  
 
 ##为什么要用ReadyStream （Why tree newbie?）
-[（讨厌吹牛逼的可以跳过这一段广告）](#什么是ReadyStream？（which ghost?）)
+（讨厌吹牛逼的可以跳过这一段广告）
 ####※上手简单
-ReadyStream通俗易理解的将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感
+ReadyStream 将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感，并且引导让你写出更清晰的程序结构。
 ####※强大的异步写入/流入
 ReadyStream对写入操作做了封装，归一化同步写入还是异步写入。写入操作会自动按顺序依次写入，无论是同步的还是异步的（如写入一个文件）。  
 也就是说自动帮你管理前一个写入操作完成后才会执行后续的写入操作。而你只需要写同步风格的代码即可。
@@ -54,8 +54,8 @@ npm install ready-stream
 
 //这样就创建了一个空的ReadyStream
 var stream=new ReadyStream();
-//其实ReadyStream接收连个参数，一般用不上。
-//而且需要你对stream系统有比较深的了解。如本身的_transform和ObjectMode等配置
+//其实ReadyStream接收两个参数，一般用不上。
+//而且需要你对stream系统有比较深的了解。如流本身的_transform和ObjectMode等配置
 //如有需要请看源码
 ```
 #####写入数据
@@ -147,15 +147,15 @@ after
  */
 ```
 #####并联接水管（我更喜欢称之为分流）
-指定pipe的第三个参数为true打开分流模式，或者直接使用.bypass代替.pipe
-分流模式实际上就是指并联的接水管，下图会详细说明
+指定pipe的第三个参数为true打开分流模式，或者直接使用.bypass代替.pipe  
+分流模式实际上就是指并联的接水管，下图会详细说明 
 ![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
 #####put异步数据
-如果你想往流中写入的数据，并不是简单的直接数据，需要一系列的操作来获得的(比如需要请求一个url得到这个数据)。  
-那么我建议把这种数据封装成异步数据，也就是把这种读取数据的过程抽象成一种数据。而这它是直接put到流中的。
-为什么要这样呢？因为要`关注点分离`！下面的例子我会说明这一点。
-首先创建一个能够put的异步数据 需要自己实现WriteRequest接口，其实也就是实现doWrite(readyStream)方法，用来描述你的写入逻辑。
+如果你想往流中写入的数据，并不是简单的直接数据，需要一系列的操作来获得的(比如需要请求一个url得到这个数据)。    
+那么我建议把这种数据封装成异步数据，也就是把这种读取数据的过程抽象成一种数据。而这它是直接put到流中的。    
+为什么要这样呢？因为要`关注点分离`！下面的例子我会说明这一点。    
+首先创建一个能够put的异步数据 需要自己实现WriteRequest接口，其实也就是实现doWrite(readyStream)方法，用来描述你的写入逻辑。  
 
 ```javascript
 //HttpWriteRequest类
@@ -193,7 +193,7 @@ HttpWriteRequest.prototype.doWrite=function(readyStream){
 };
 
 ```
-上面就是一个异步数据的封装，有了他，那么程序的主要逻辑就非常清晰了
+上面就是一个异步数据的封装，有了他，那么程序的主要逻辑就非常清晰了。
 ```javascript
 var stream=new ReadyStream();
 stream.put(new HttpWriteRequest('http://www.jd.com/robots.txt'));
@@ -201,8 +201,9 @@ stream.put("end");
 stream.end();
 stream.pipe(process.stdout)
 ```
-这样把数据源的行为单独封装，使之与程序的主要数据流转逻辑（用对stream的写入、加工、写出来描述）分离开来，是一种比较好的思路，是关注点分离的简单实现，而关注点分离正是一个优秀架构的行为准则。
+这样把数据源的行为单独封装，使之与程序的主要数据流转逻辑（用对stream的写入、加工、写出来描述）分离开来，是一种比较好的思路，是关注点分离的简单实现，而关注点分离正是一个优秀架构的行为准则。    
 否则，如果主要逻辑以源数据读取为主，对于stream的操作就会分散到各种异步回调中，就像下面的例子，同样实现上述功能
+
 ```javascript
 var urlObj = Url.parse('http://www.jd.com/robots.txt');
 Http.request({
@@ -263,3 +264,6 @@ stream.pipe(function(chunk,encoding,next){
 //分流写入文件，保存压缩版本
 stream.pipe(Fs.createWriteStream("./pack.min.js"));
 ```
+####联系作者
+如果有什么问题和建议，欢迎来吐槽~~  
+吐槽热线：tanhawk#163.com
