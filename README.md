@@ -1,7 +1,7 @@
 # ReadyStream
 一个简单易用的数据流封装，让你快速运用stream的强大威力。
 
-##什么是流(Stream)?
+##什么是流（What is Stream?）
 （已经了解stream的可以跳过这一段啰嗦）  
 
 首先，流是一种关于【数据传输和流动】的抽像。早在unix时代，流的概念就已经深入人心，    
@@ -14,27 +14,27 @@
 
 `我的ReadyStream就是对这transform流的一种封装`  
 
-##⭐️为什么要用ReadyStream (Why tree newbie)
-（讨厌吹牛逼的可以跳过这一段广告）
-####⭐️上手简单
+##为什么要用ReadyStream （Why tree newbie?）
+[（讨厌吹牛逼的可以跳过这一段广告）](#什么是ReadyStream？（which ghost?）)
+####※上手简单
 ReadyStream通俗易理解的将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感
-####⭐️强大的异步写入/流入
+####※强大的异步写入/流入
 ReadyStream对写入操作做了封装，归一化同步写入还是异步写入。写入操作会自动按顺序依次写入，无论是同步的还是异步的（如写入一个文件）。  
 也就是说自动帮你管理前一个写入操作完成后才会执行后续的写入操作。而你只需要写同步风格的代码即可。
 
-####⭐️简单好用的加工处理
+####※简单好用的加工处理
 ReadyStream可以很方便的引流(pipe)到一个数据加工函数里。而且可以根据需要帮你积蓄数据，一次性给你。  
 （正常情况下，流肯定是写一点给一点，加工函数会调用多次。积蓄是指等所有的写入都完成，一次性给到加工函数里，加工函数只会调用一次。
-####⭐️完全可以用ReadyStream做一个gulp
+####※完全可以用ReadyStream做一个gulp
 没有噱头，没人关注呀~  
 其实我的ReadyStream也并非是为了让你重复造个gulp轮子的。  
 而是更好地在自己的项目中运用流的力量  
 
-#什么是ReadyStream？
+#什么是ReadyStream？（What ghosts?）
 （想快速上手使用的可以跳过这段扯淡）  
-  
+
 ReadyStream是一个链式Transform流封装。提供非常方便的流操作。   
-诸如`写入文件`，`异步写入数`据，`pipe到加工函数`，`预缓存流数据`等。  
+诸如`写入文件`，`异步写入数据`，`pipe到加工函数`，`预缓存流数据`等。  
 ######为什么要是链式的？  
 正常情况下一个可读流通过readable.pipe(dest) 引流到另外一个stream之后 你想继续pipe就只能在这个另外的流(dest)上pipe。
 而ReadyStream则会保持最后一个dest的引用，每次pipe是在基于这个readystream的dest引用，所以可以针对这一个readystream 实例一路pipe管子接到死,当然也同时保留并联pipe的能力（我这里称之为分流bypass）  
@@ -44,7 +44,7 @@ ReadyStream是一个链式Transform流封装。提供非常方便的流操作。
 所以我将ReadyStream暴露给用户可以让用户方便的进行数据写入和处理，而且上面也说了，链式让readystream可以以单例的形式存在，
 因此在各个阶段，无论是开发者还是我的框架只需要处理这个统一的readystream实例就够了。例如在经过了业务中间件之后，后续的中间件都可以基于这一个readyStream进行数据加工(如gzip)   
 
-#如何使用？
+#如何使用？（How to play?）
 
 ####安装
 npm install ready-stream
@@ -52,15 +52,11 @@ npm install ready-stream
 #####创建ReadyStream
 ```javascript
 
-//这样创建一个空的ReadyStream
+//这样就创建了一个空的ReadyStream
 var stream=new ReadyStream();
-//创建一个文件作为数据源的的ReadyStream
-var stream=new ReadyStream(fs.createFileReadStream('./in.txt'));
-//创建一个字符串作为数据源的ReadyStream
-var stream=new ReadyStream("hello");
-//创建一个对象作为数据源的ReadyStream 因为stream只接受buffer数据 对象会被序列化成JSON串
-var stream=new ReadyStream("hello");
-
+//其实ReadyStream接收连个参数，一般用不上。
+//而且需要你对stream系统有比较深的了解。如本身的_transform和ObjectMode等配置
+//如有需要请看源码
 ```
 #####写入数据
 ```javascript 
@@ -151,30 +147,88 @@ after
  */
 ```
 #####并联接水管（我更喜欢称之为分流）
+指定pipe的第三个参数为true打开分流模式，或者直接使用.bypass代替.pipe
+分流模式实际上就是指并联的接水管，下图会详细说明
 ![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
 #####put异步数据
-需要自己实现WriteRequest接口 也就是实现doWrite(readyStream)方法。用来定义你的写入逻辑。
-下面是一个简单的例子 复杂且有实际意义的例子请参见[例子HttpWriteRequest](https://github.com/exolution/ReadyStream/blob/master/demo2.js)
+如果你想往流中写入的数据，并不是简单的直接数据，需要一系列的操作来获得的(比如需要请求一个url得到这个数据)。  
+那么我建议把这种数据封装成异步数据，也就是把这种读取数据的过程抽象成一种数据。而这它是直接put到流中的。
+为什么要这样呢？因为要`关注点分离`！下面的例子我会说明这一点。
+首先创建一个能够put的异步数据 需要自己实现WriteRequest接口，其实也就是实现doWrite(readyStream)方法，用来描述你的写入逻辑。
+
 ```javascript
-function DelayWriteRequest(data,delay){
-    this.data=_serializeData(data);
-    this.delay=delay;
+//HttpWriteRequest类
+// 名字随意取，其实更建议易懂的名字，比如HttpData。
+// 只要包含doWrite方法即可
+function HttpWriteRequest(url){
+    this.url=url;
 }
-DelayWriteRequest.prototype.doWrite=function(readyStream){
-    //打开正在写入状态
-    readyStream._writing=true;
-    var self=this;
-    setTimeout(function(){
-        //写入数据 这里尽量使用原生的write 而不是put
-        readyStream.write(self.data);
-        //结束正在写入状态
-        readyStream._writing=false;
-        //让readyStream去完成后续的写入请求
-        readyStream.drain();
-    },this.delay);
+//实现doWrite方法
+HttpWriteRequest.prototype.doWrite=function(readyStream){
+    //这几段是调用http.request的方法 不做过多注释了
+    var urlObj = Url.parse(this.url);
+    var request = Http.request({
+        host:urlObj.hostname,
+        method  : 'get',
+        path    : urlObj.path,
+        port    : urlObj.port || 80,
+    }, function(res) {
+        res.on('data', function(chunk) {
+            //关键点1：请求到数据之后写到readyStream里
+            //注意这里一定要用同步的write 否则这些数据可能会被延迟写入
+            //因为put会等所有之前的put完成之后再写入。
+            //而执行到这已经是个异步过程，如果此前已经有put操作，那么这时候的写入会滞后，肯定不是你所期待的
+            readyStream.write(chunk)
+        });
+        res.on('end', function() {
+            if(res.statusCode == 200) {
+                //关键点2：通知readyStream去完成后续的写入任务（吸干 好吧我邪恶了）
+                readyStream.drain();
+            }
+        });
+    });
+    request.end();
 };
+};
+
 ```
+上面就是一个异步数据的封装，有了他，那么程序的主要逻辑就非常清晰了
+```javascript
+var stream=new ReadyStream();
+stream.put(new HttpWriteRequest('http://www.jd.com/robots.txt'));
+stream.put("end");
+stream.end();
+stream.pipe(process.stdout)
+```
+这样把数据源的行为单独封装，使之与程序的主要数据流转逻辑（用对stream的写入、加工、写出来描述）分离开来，是一种比较好的思路，是关注点分离的简单实现，而关注点分离正是一个优秀架构的行为准则。
+否则，如果主要逻辑以源数据读取为主，对于stream的操作就会分散到各种异步回调中，就像下面的例子，同样实现上述功能
+```javascript
+var urlObj = Url.parse('http://www.jd.com/robots.txt');
+Http.request({
+    host:urlObj.hostname,
+    method  : 'get',
+    path    : urlObj.path,
+    port    : urlObj.port || 80,
+}, function(res) {
+    var stream=new ReadyStream();
+    stream.inflow(res);//等同于res.pipe(stream);
+    stream.put(res);
+    //如果这时候还需要请求异步数据呢 好吧继续嵌套
+    Url.parse('http://www.hitour.cc/robots.txt');
+    Http.request({
+        host:urlObj.hostname,
+        method  : 'get',
+        path    : urlObj.path,
+        port    : urlObj.port || 80,
+    }, function(response) {
+        stream.inflow(response);
+        stream.pipe(process.stdout);
+    }).end()
+}).end();
+```
+请对比一下 哪种更清晰。
+
 ######实例
 到现在说了这么多 可能你还是不知道readyStream有啥用？
 那好吧，我就实现一个简单的gulp功能来说明吧
