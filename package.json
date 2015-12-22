@@ -16,5 +16,8 @@
     "stream",
     "transform",
     "through"
-  ]
+  ],
+  "devDependencies": {
+    "uglify-js": "^2.6.1"
+  }
 }

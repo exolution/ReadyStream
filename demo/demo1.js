@@ -1,4 +1,4 @@
-var ReadyStream=require('./ReadyStream');
+var ReadyStream=require('../ReadyStream');
 var Fs=require('fs');
 
 var stream=new ReadyStream();
@@ -25,7 +25,6 @@ stream.put("hahaha\n");
 //由于是同步写入数据 会在所有异步写入之前写入
 //强烈不推荐这种方式写入，保留它是因为这是一个stream必须的方法。请尽量使用put
 stream.write("sync\n");
-
 //处理加工数据-串行接水管
 stream.pipe(function(chunk,encoding,next){
     //[chunk]:数据块(是一个buffer)[encoding]:数据的编码[next]:执行下一步的回调函数

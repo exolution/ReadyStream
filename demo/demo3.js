@@ -25,8 +25,8 @@ stream.pipe(Fs.createWriteStream("./pack.js"));
 
 stream.pipe(function(chunk,encoding,next){
     //压缩处理
-    this.push(UglifyJS.minify(chunk.toString(), {fromString: true}));
+    this.push(UglifyJS.minify(chunk.toString(), {fromString: true}).code);
     next()
-},true);;
+},true);
 //分流写入文件，保存压缩版本
 stream.pipe(Fs.createWriteStream("./pack.min.js"));
