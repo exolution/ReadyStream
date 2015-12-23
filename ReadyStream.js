@@ -1,4 +1,3 @@
-
 var Transform = require('stream').Transform;
 var Readable = require('stream').Readable;
 var Writable = require('stream').Writable;
@@ -12,50 +11,35 @@ var rawEnd = Writable.prototype.end;
  * @version 0.10
  * @since 2015
  */
-function ReadyStream(config,transform) {
+function ReadyStream(config, transform) {
 
-    if(typeof config==='function'){
-        this._transform=config;
+    if(typeof config === 'function') {
+        this._transform = config;
     }
-    else{
-        this.config=config||{};
-        if(typeof transform==='function'){
-            this._transform=transform;
+    else {
+        this.config = config || {};
+        if(typeof transform === 'function') {
+            this._transform = transform;
         }
     }
     //it's a transform stream
     // 继承于transform类
-    Transform.call(this,config);
-    //write Request queue for ensure the sequence of async write operation
-    //写请求队列  用来确保一系列异步写操作的顺序性
-    this._writeRequest = [];
-    //whether a async write operation in progress
-    //是否正在执行写操作
-    this._writing = false;
+    Transform.call(this, config);
+
+    this.writeRequestManager = new WriteRequestManager(this);
     //delayed end
     //延迟的end信息 当前stream有异步的写入操作（如writeFile）此时不能立即执行end需要等所有的异步写入操作都完成后再执行end
-    this._end = null;
     //实际上它本身是一系列transform流的链 它内部永远保存最新流经的transform流的引用
     //in fact,it's a chain of transform stream.it hold the latest transform stream which data flowed in
-    this._currentStream = this;
-    this._sources=[];
-    this.on('pipe',function(source){
-        if(this._writing||this._sources.length>0){
-            this._writeRequest.push(new StreamWriteRequest(source));
-            process.nextTick(function(){
-                source.pause();
-            })
-        }
-        else{
-            this._writing=true;
-            this._writingSource=source;
-        }
+    this.currentStream = this;
+    this.on('pipe', function(source) {
+        this.writeRequestManager.addStream(source);
     });
 }
 Util.inherits(ReadyStream, Transform);
 //implement _transform
-ReadyStream.prototype._transform=function(chunk, encoding, next) {
-    next(null,chunk);
+ReadyStream.prototype._transform = function(chunk, encoding, next) {
+    next(null, chunk);
 };
 /**
  * extended pipe
@@ -69,11 +53,11 @@ ReadyStream.prototype._transform=function(chunk, encoding, next) {
  * 否则 可能会调用多次（流本身就不是一次性写完的）
  * bypass代表是否分流 默认为false 意思是正常情况下 每次调用pipe 就会给流接一个管子 这些管子是依次串联的
  * 如果bypass =true 这些管子则会并联的接起来。另外如果pipe到一个只可写不可读的单向流 默认分流
-*/
-ReadyStream.prototype.pipe = function(dest, buffered,bypass) {
+ */
+ReadyStream.prototype.pipe = function(dest, buffered, bypass) {
     if(typeof dest === 'function') {
         var transform = new Transform(this.config);
-        if(this.config.objectMode) buffered=false;
+        if(this.config.objectMode) buffered = false;
         transform._transform = dest;
         if(buffered) {
             var bufferList = [], encoding;
@@ -90,14 +74,13 @@ ReadyStream.prototype.pipe = function(dest, buffered,bypass) {
         else {
             transform._transform = dest;
         }
-        rawPipe.call(this._currentStream, transform);
-        if(!bypass)this._currentStream =transform;
+        rawPipe.call(this.currentStream, transform);
+        if(!bypass)this.currentStream = transform;
     }
     else {
-
-        rawPipe.call(this._currentStream, dest);
-        if(dest.readable&&!bypass) {
-            this._currentStream = dest;
+        rawPipe.call(this.currentStream, dest);
+        if(dest.readable && !bypass) {
+            this.currentStream = dest;
         }
     }
     return this;
@@ -105,113 +88,178 @@ ReadyStream.prototype.pipe = function(dest, buffered,bypass) {
 /**
  * 分流stream
  * */
-ReadyStream.prototype.bypass=function(dest,buffered){
-    return this.pipe(dest,buffered,true);
+ReadyStream.prototype.bypass = function(dest, buffered) {
+    return this.pipe(dest, buffered, true);
 };
 /*
-* 写入文件数据 这是一个异步的写操作
-* 如果多次调用此方法 后续的写操作只有在上一个文件全部写入后才会执行
-* */
-ReadyStream.prototype.writeFile = function(path,config,manualEnd) {
-    this.inflow(Fs.createReadStream(path,config),manualEnd);
+ * 写入文件数据 这是一个异步的写操作
+ * 如果多次调用此方法 后续的写操作只有在上一个文件全部写入后才会执行
+ * */
+ReadyStream.prototype.writeFile = function(path, config, manualEnd) {
+    this.inflow(Fs.createReadStream(path, config), manualEnd);
 };
-ReadyStream.prototype.inflow=function(readableStream,manualEnd){
-    readableStream.pipe(this,manualEnd?{end:false}:undefined);
+ReadyStream.prototype.inflow = function(readableStream, manualEnd) {
+    readableStream.pipe(this, manualEnd ? {end : false} : undefined);
 };
 /*
-* 异步写数据操作
-* 异步写操作会等待之前所有的异步写操作完成之后才会写入 
-* 如果之前没有异步写操作 则会立即（同步）写入数据
-* */
+ * 异步写数据操作
+ * 异步写操作会等待之前所有的异步写操作完成之后才会写入
+ * 如果之前没有异步写操作 则会立即（同步）写入数据
+ * */
 ReadyStream.prototype.put = function(data) {
-    if(data===null||data===undefined){
+    if(data === null || data === undefined) {
         return null;
     }
     if(typeof data.doWrite === 'function') {
-        var writeRequest=data;
+        var writeRequest = data;
+        writeRequest._async=true;
+    }
+    else if(data.readable) {
+        writeRequest = new StreamWriteRequest(data);
     }
     else {
-        writeRequest=new DataWriteRequest(data);
+        writeRequest = new DataWriteRequest(data);
     }
-    if(this._writing) {
-       this._writeRequest.push(writeRequest);
-    }
-    else{
-        this._writing=true;
-        writeRequest.doWrite(this);
-    }
-
+    this.writeRequestManager.addOrRun(writeRequest)
 };
 ReadyStream.prototype.end = function(chunk, encoding, cb) {
-    if(!this._writing) {
+    if(!this.writeRequestManager.isWriting()) {
         rawEnd.call(this, chunk, encoding, cb);
     }
     else {
-        this._end = {
+        this.writeRequestManager.end = {
             chunk    : chunk,
             encoding : encoding,
             cb       : cb
         };
-        if(this._writingSource) {
-            if(this._writingSource._readableState.ended) {
-                //没有待写入的
-                this.drain();
-            }
-        }
-        else{
-            this.drain();
+        if(this.writeRequestManager.isSourceStreamFinished()) {
+            this.writeRequestManager.drain();
         }
     }
 };
 ReadyStream.prototype.drain = function() {
-        var writeRequest = this._writeRequest.shift();
-        if(writeRequest) {
-            writeRequest.doWrite(this);
-        }
-        else {
-            this._writing=false;
-            if(this._end){
-                this.end(this._end.chunk, this._end.encoding, this._end.cb);
-            }
-        }
+    this.writeRequestManager.drain();
 };
-function _serializeData(data){
-    if(typeof data=='object'){
-        if(!Buffer.isBuffer(data)){
+
+function WriteRequestManager(readyStream) {
+    this.readyStream = readyStream;
+    this.stack = [[]];
+    //this.currentWriteReqeust=null;
+}
+WriteRequestManager.prototype.push = function(writeRequest) {
+    this.stack[this.stack.length - 1].push(writeRequest);
+};
+WriteRequestManager.prototype.newContext = function() {
+    this.stack.push([]);
+}
+WriteRequestManager.prototype.addOrRun = function(writeRequest, doNotWrite) {
+    if(this.isWriting()) {
+        this.push(writeRequest);
+    }
+    else {
+        this.run(writeRequest, true);
+    }
+};
+WriteRequestManager.prototype.run = function(writeRequest, immediately) {
+    var self = this;
+    if(writeRequest._async) {
+        if(immediately)this.push(writeRequest);
+        process.nextTick(function() {
+            self.newContext();
+            writeRequest.doWrite(self.readyStream);
+        });
+    }
+    else {
+        writeRequest.doWrite(this.readyStream);
+    }
+};
+WriteRequestManager.prototype.addStream = function(stream) {
+    if(this.isWriting()) {
+        process.nextTick(function() {
+            stream.pause();
+        })
+    }
+    else {
+        this.currentSourceStream = stream;
+    }
+    this.stack[this.stack.length - 1].push(new StreamWriteRequest(stream));
+
+};
+WriteRequestManager.prototype.isSourceStreamFinished = function() {
+    return this.currentSourceStream && this.currentSourceStream._readableState.ended;
+};
+WriteRequestManager.prototype.drain = function() {
+    var context = this.stack[this.stack.length - 1];
+    context.shift();
+    if(context.length > 0) {
+        this.run(context[0]);
+        if(context[0].sync) {
+            this.drain();
+        }
+    }
+    else if(this.stack.length > 1) {
+        this.stack.pop();
+        this.drain();
+    }
+    else if(this.end) {
+        this.readyStream.end(this.end.chunk, this.end.encoding, this.end.cb);
+    }
+};
+WriteRequestManager.prototype.isWriting = function() {
+    return this.stack[this.stack.length - 1].length > 0;
+};
+function _serializeData(data) {
+    if(typeof data == 'object') {
+        if(!Buffer.isBuffer(data)) {
             return JSON.stringify(data);
         }
         else {
             return data;
         }
     }
-    else if(data!==undefined&&data!==null){
+    else if(data !== undefined && data !== null) {
         return data.toString();
     }
     else {
         return "";
     }
 }
-function DataWriteRequest(data){
-    if(data===undefined||data===null){
+function DataWriteRequest(data) {
+    this.sync = true;
+    if(data === undefined || data === null) {
         return null;
     }
-   this.data=_serializeData(data);
+    this.data = _serializeData(data);
 }
-DataWriteRequest.prototype.doWrite=function(readyStream){
+DataWriteRequest.prototype.doWrite = function(readyStream) {
     readyStream.write(this.data);
-    //fixme 是否要使用nextTick做成异步的
-    readyStream.drain();
 };
-function StreamWriteRequest(stream){
-    this.stream=stream;
+function StreamWriteRequest(stream) {
+    this.stream = stream;
 }
-StreamWriteRequest.prototype.doWrite=function(readyStream){
-    readyStream._writing=true;
-    readyStream._writingSource=this.stream;
-    this.stream.resume();
-};
-module.exports = function(config,transform){
-    return new ReadyStream(config,transform);
-};
+StreamWriteRequest.prototype.doWrite = function(readyStream) {
+    readyStream.writeRequestManager.currentSourceStream = this.stream;
+    var self = this;
+    process.nextTick(function() {
+        self.stream.resume();
+    });
 
-
+};
+module.exports = function(config, transform) {
+    return new ReadyStream(config, transform);
+};
+function _invoke(func,thisArgs,args){
+    if(func){
+        switch(args.length){
+            case 0:
+                func.call()
+        }
+    }
+}
+module.exports.WriteRequest={
+    implement:function(definition){
+        var WriteRequest=definition.hasOwnProperty("constructor")?definition.constructor:function WriteRequest(){};
+        WriteRequest.prototype=definition;
+        return WriteRequest;
+    }
+};
