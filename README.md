@@ -17,9 +17,9 @@
 ##为什么要用ReadyStream （Why tree newbie?）
 （讨厌吹牛逼的可以跳过这一段广告）
 ####※上手简单
-ReadyStream 将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感，并且引导让你写出更清晰的程序结构。
+ReadyStream 将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感，并且通过对异步写入的封装，引导让你写出更清晰的程序结构。
 ####※强大的异步写入/流入
-ReadyStream对写入操作做了封装，归一化同步写入还是异步写入。写入操作会自动按顺序依次写入，无论是同步的还是异步的（如写入一个文件）。  
+ReadyStream对写入操作做了封装，归一化同步写入还是异步写入。写入操作会自动按顺序依次写入，无论是同步的还是异步的（如写入一个文件）。 
 也就是说自动帮你管理前一个写入操作完成后才会执行后续的写入操作。而你只需要写同步风格的代码即可。
 
 ####※简单好用的加工处理
@@ -59,34 +59,33 @@ var stream=new ReadyStream();
 //如有需要请看源码
 ```
 #####写入数据
+
 ```javascript 
 //写入一个文件
 stream.writeFile("./in.txt");//文件内容为"hello"
+```
 
-/*
- * 写文件是一种异步的写操作，
- * 异步的写操作会等之前所有的异步写操作完成之后才会开始写入数据
- * 所以in2.txt会在in.txt全部写入后才开始写入
- */
+写文件是一种异步的写操作，  
+异步的写操作会等之前所有的异步写操作完成之后才会开始写入数据  
+所以in2.txt会在in.txt全部写入后才开始写入  
+```javascript 
 stream.writeFile("./in2.txt");//文件内容为" world"
+```
 
-/*
- * 因为readyStream本身也是一个标准的transform流所以也可以用这种方式写入文件
- * 一样会等前边的异步写入完成之后开始写入
- */
+因为readyStream本身也是一个标准的transform流所以也可以用这种方式写入文件  
+ 一样会等前边的异步写入完成之后开始写入
+
+```javascript 
 var input=Fs.createReadStream('./in3.txt');//文件内容为 " readystream\n"
 input.pipe(stream);//也可以用stream.inflow(input)性质一样
-
-
-//往流中写入数据
-/*
- * put会等待之前所有的异步写入操作完成之后才开始写入，
- * 如果之前没有异步写操作 则会立即（同步）写入
- * 所以"hahaha"会等in.txt和 in2.txt都全部写入之后才会写入
- * 另外 put也可以写入异步数据 下文会介绍
- */
+```
+######往流中写入数据
+put会等待之前所有的异步写入操作完成之后才开始写入，  
+如果之前没有异步写操作 则会立即（同步）写入  
+所以"hahaha"会等in.txt和 in2.txt都全部写入之后才会写入  
+另外 put也可以写入封装好的异步数据 下文会重点介绍  
+```javascript
 stream.put("hahaha\n");
-
 
 /*
  * 同步写入数据 这个是writable的原生方法 只允许写入buffer类型或者string
@@ -117,7 +116,6 @@ stream.pipe(function(chunk,encoding,next){
 },false/*buffered*/);
 stream.pipe(function(chunk,encoding,next){
     //这个函数就是数据的加工函数（第二个管子）
-    
     /*
      * 下面的bufferd参数为true 表示积蓄数据，会等前面所有的写入操作完成之后才会执行这个函数
      * 重点：只有主动调用stream.end() readyStream才知道所有的写入完成，才会执行这个函数 否则会一直等待
@@ -132,7 +130,7 @@ stream.pipe(function(chunk,encoding,next){
 
 /*
  * 结束流 如果前面还有未执行完的异步写入操作 会等所有异步写入操作都完成后才执行
- * 结束一个流之后就不能再往里面写入数据了
+ * end表示你要结束整个流的写入，结束一个流之后就不能再往里面写入数据了 
  */
 stream.end();
 
@@ -151,49 +149,66 @@ after
 分流模式实际上就是指并联的接水管，下图会详细说明 
 ![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
 
-#####put异步数据
-如果你想往流中写入的数据，并不是简单的直接数据，需要一系列的操作来获得的(比如需要请求一个url得到这个数据)。    
-那么我建议把这种数据封装成异步数据，也就是把这种读取数据的过程抽象成一种数据。而这它是直接put到流中的。    
-为什么要这样呢？因为要`关注点分离`！下面的例子我会说明这一点。    
+#### put 异步数据
+这个是我重点设计的地方，也是前面所说的引导开发者写出良好代码结构。（所以扯得多一些，希望多关注这一部分）  
+如果你想往流中写入的数据，并不是简单的直接数据，需要一系列的操作来获得的(比如需要请求一个url得到这个数据)。      
+那么我建议把这种数据封装成`异步数据`，也就是把这种读取数据的过程抽象成一种数据，把它直接put到流中的。  
+为什么要这样呢？因为要`关注点分离`！把这种异步的一系列对readystream的操作单独封装起来，剥离出主要的代码结构。能够避免代码分散到各个的异步回调变得支离破碎。这其实是一种层次上的分离，实际上所谓的`异步数据`封装也是对readystream的操作，只不过我把他们分离到不同的层次中，使得代码结构变得清晰，也几乎能保证，主代码（最外层的代码）完全是同步形式的。  
+下面说一下如何创建一个`异步数据`  
 首先创建一个能够put的异步数据 需要自己实现WriteRequest接口，其实也就是实现doWrite(readyStream)方法，用来描述你的写入逻辑。  
+你只要做一个包含doWrite方法的类就好了，当然我也提供了快速创建这个类的方式ReadyStream.WriteRequest.implement(类定义);
 
 ```javascript
-//HttpWriteRequest类
-// 名字随意取，其实更建议易懂的名字，比如HttpData。
-// 只要包含doWrite方法即可
-function HttpWriteRequest(url){
-    this.url=url;
-}
-//实现doWrite方法
-HttpWriteRequest.prototype.doWrite=function(readyStream){
-    //这几段是调用http.request的方法 不做过多注释了
-    var urlObj = Url.parse(this.url);
-    var request = Http.request({
-        host:urlObj.hostname,
-        method  : 'get',
-        path    : urlObj.path,
-        port    : urlObj.port || 80,
-    }, function(res) {
-        res.on('data', function(chunk) {
-            //关键点1：请求到数据之后写到readyStream里
-            //注意这里一定要用同步的write 否则这些数据可能会被延迟写入
-            //因为put会等所有之前的put完成之后再写入。
-            //而执行到这已经是个异步过程，如果此前已经有put操作，那么这时候的写入会滞后，肯定不是你所期待的
-            readyStream.write(chunk)
+var HttpData=ReadyStream.WriteRequest.implement({
+    //构造函数
+    constructor:function HttpData(url){
+        this.url=url;
+    },
+    resolveRedirectUrl:function(headers){
+    //处理重定向的url 篇幅原因这里不写具体实现 请参看demo文件夹下的demo2.js
+    },
+    //实现doWrite方法
+    doWrite:function(readyStream){
+        var urlObj = Url.parse(this.url);
+        var request = Http.request({
+            host:urlObj.hostname,
+            method  : 'get',
+            path    : urlObj.path,
+            port    : urlObj.port || 80
+        }, function(res) {
+            res.on('data', function(chunk) {
+                //请求到数据之后写到readyStream里
+                //这就是在这个层次的写入 同样支持写入复杂的数据（如writeFile）或者嵌套另外一个[异步数据]
+                readyStream.put(chunk);
+            });
+            res.on('end', function() {
+                if(res.statusCode == 200) {
+                    //http数据读完了
+                    //结束当前的数据写入
+                    //由于是异步的所以 不end的话 我就不知道你什么时候结束，
+                    //所以必须在你认为异步结束的时候执行.end
+                    //这也是我所说的一个【异步数据】封装的就是一个完整的对readyStream写入的代码层次，
+                    //在这个层次你当然要在合适的时候告诉我写入完成了
+                    readyStream.end();
+                }
+                else if(res.statusCode==302||res.statusCode==301){
+                    //处理重定向
+                     var urlObj=self.resolveRedirectUrl(res.headers);
+                    //这就是我说的层次分离，在一个【异步数据】中可以put另外一个异步数据（相当于开辟了一个新的层次）
+                    //整个代码变得更清晰和更优雅有木有！（这个逼给几分^_^）
+                    readyStream.put(new HttpData(urlObj));
+                    //当然千万别忘了end
+                    readyStream.end();
+                }
+            });
         });
-        res.on('end', function() {
-            if(res.statusCode == 200) {
-                //关键点2：通知readyStream去完成后续的写入任务（吸干 好吧我邪恶了）
-                readyStream.drain();
-            }
-        });
-    });
-    request.end();
-};
-};
+        request.end();
+    }
+});
+
 
 ```
-上面就是一个异步数据的封装，有了他，那么程序的主要逻辑就非常清晰了。
+上面就是一个异步数据的封装，有了他，那么程序的主要代码结构就变得非常清晰了，基本上全是同步代码。
 ```javascript
 var stream=new ReadyStream();
 stream.put(new HttpWriteRequest('http://www.jd.com/robots.txt'));
@@ -201,6 +216,7 @@ stream.put("end");
 stream.end();
 stream.pipe(process.stdout)
 ```
+
 这样把数据源的行为单独封装，使之与程序的主要数据流转逻辑（用对stream的写入、加工、写出来描述）分离开来，是一种比较好的思路，是关注点分离的简单实现，而关注点分离正是一个优秀架构的行为准则。    
 否则，如果主要逻辑以源数据读取为主，对于stream的操作就会分散到各种异步回调中，就像下面的例子，同样实现上述功能
 
@@ -242,28 +258,61 @@ var Path=require('path');
 //主要功能：
 //把当前文件夹下的js合并压缩成一个文件 并同时保存一个未压缩的版本
 
-var stream=new ReadyStream();
-Fs.readdir('./',function(err,files){
-    //遍历当前文件夹
-    files.forEach(function(file){
-        if(Path.extname(file)==='.js') {
-            //写入文件 且每个文件开头加上文件名注释
-            stream.put('\n/*========file:' + file + '========*/\n');
-            stream.writeFile(file);
-        }
-    })
+
+//创建一个延时【异步数据】等待一定时间后才写入数据 （没实际意义只是为了体现异步）
+var DelayedData=ReadyStream.WriteRequest.implement({
+    constructor:function(data,delay){
+        this.data=data;
+        this.delay=delay;
+    },
+    doWrite:function(readyStream){
+        var self=this;
+        setTimeout(function(){
+            readyStream.put(self.data);
+            readyStream.end();//别忘了end呦
+        },this.delay);
+    }
 });
+
+//目录文件【异步数据】
+var DirFile=ReadyStream.WriteRequest.implement({
+    constructor:function(path,ext){
+        this.path=path;
+        this.ext='.'+ext;//扩展名过滤
+    },
+    doWrite:function(readyStream){
+        var self=this;
+        Fs.readdir(this.path,function(err,files){
+            //遍历当前文件夹
+            files.forEach(function(file){
+                if(Path.extname(file)===self.ext) {
+                    //写入文件 且每个文件开头加上文件名注释
+                    readyStream.put('\n/*========file:' + file + '========*/\n');
+                    readyStream.writeFile(file);
+                    //等待1000ms后再写入下个文件（并插入等待1秒字样）
+                    readyStream.put(new DelayedData("\n等待1秒",1000));
+                }
+            });
+            readyStream.end();
+        });
+    }
+});
+var stream=new ReadyStream();
+stream.put(new DirFile('./','js'));
+stream.put('//end');
 //分流写入文件 保存一个未压缩版本
 stream.pipe(Fs.createWriteStream("./pack.js"));
-
 stream.pipe(function(chunk,encoding,next){
     //压缩处理
-    this.push(UglifyJS.minify(chunk.toString(), {fromString: true}));
+    this.push(UglifyJS.minify(chunk.toString(), {fromString: true}).code);
     next()
-},true);;
+},true);
 //分流写入文件，保存压缩版本
 stream.pipe(Fs.createWriteStream("./pack.min.js"));
+//结束
+stream.end();
 ```
+
 ####联系作者
 如果有什么问题和建议，欢迎来吐槽~~  
 吐槽热线：tanhawk#163.com
