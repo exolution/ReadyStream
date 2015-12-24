@@ -25,10 +25,7 @@ function ReadyStream(config, transform) {
     //it's a transform stream
     // 继承于transform类
     Transform.call(this, config);
-
     this.writeRequestManager = new WriteRequestManager(this);
-    //delayed end
-    //延迟的end信息 当前stream有异步的写入操作（如writeFile）此时不能立即执行end需要等所有的异步写入操作都完成后再执行end
     //实际上它本身是一系列transform流的链 它内部永远保存最新流经的transform流的引用
     //in fact,it's a chain of transform stream.it hold the latest transform stream which data flowed in
     this.currentStream = this;
@@ -98,6 +95,9 @@ ReadyStream.prototype.bypass = function(dest, buffered) {
 ReadyStream.prototype.writeFile = function(path, config, manualEnd) {
     this.inflow(Fs.createReadStream(path, config), manualEnd);
 };
+/**
+ * 写入一个流 其实相当于.pipe(readySteam);
+ * */
 ReadyStream.prototype.inflow = function(readableStream, manualEnd) {
     readableStream.pipe(this, manualEnd ? {end : false} : undefined);
 };
@@ -123,41 +123,58 @@ ReadyStream.prototype.put = function(data) {
     this.writeRequestManager.addOrRun(writeRequest)
 };
 ReadyStream.prototype.end = function(chunk, encoding, cb) {
-    if(!this.writeRequestManager.isWriting()) {
-        rawEnd.call(this, chunk, encoding, cb);
-    }
-    else {
-        this.writeRequestManager.end = {
-            chunk    : chunk,
-            encoding : encoding,
-            cb       : cb
-        };
-        if(this.writeRequestManager.isSourceStreamFinished()) {
-            this.writeRequestManager.drain();
-        }
-    }
+    this.writeRequestManager.end(chunk, encoding, cb);
 };
 ReadyStream.prototype.drain = function() {
     this.writeRequestManager.drain();
 };
-
+/**
+ * 写入请求管理器
+ * */
 function WriteRequestManager(readyStream) {
     this.readyStream = readyStream;
-    this.stack = [[]];
-    //this.currentWriteReqeust=null;
+    this.stack = [
+        {
+            end:null,
+            writeRequest:[]
+        }
+    ];
 }
 WriteRequestManager.prototype.push = function(writeRequest) {
-    this.stack[this.stack.length - 1].push(writeRequest);
+    this.stack[this.stack.length - 1].writeRequest.push(writeRequest);
 };
 WriteRequestManager.prototype.newContext = function() {
-    this.stack.push([]);
-}
-WriteRequestManager.prototype.addOrRun = function(writeRequest, doNotWrite) {
+    this.stack.push({
+        end:null,
+        writeRequest:[]
+    });
+};
+WriteRequestManager.prototype.addOrRun = function(writeRequest) {
     if(this.isWriting()) {
         this.push(writeRequest);
     }
     else {
         this.run(writeRequest, true);
+    }
+};
+WriteRequestManager.prototype.drain = function() {
+    var context = this.stack[this.stack.length - 1];
+    context.writeRequest.shift();
+    if(context.writeRequest.length > 0) {
+        this.run(context.writeRequest[0]);
+        if(context.writeRequest[0].sync) {
+            this.drain();
+        }
+    }
+
+    else if(context.end) {
+        if(this.stack.length > 1){
+            this.stack.pop();
+            this.drain();
+        }
+        else{
+            this.end(context.end.chunk, context.end.encoding, context.end.cb);
+        }
     }
 };
 WriteRequestManager.prototype.run = function(writeRequest, immediately) {
@@ -173,6 +190,36 @@ WriteRequestManager.prototype.run = function(writeRequest, immediately) {
         writeRequest.doWrite(this.readyStream);
     }
 };
+WriteRequestManager.prototype.end=function(chunk, encoding, cb){
+    if(this.stack.length==1&&!this.isWriting()){
+        rawEnd.call(this.readyStream,chunk, encoding, cb);
+    }
+    else{
+        if(this.currentSourceStream){
+            if(this.currentSourceStream._readableState.ended){
+                this.currentSourceStream=null;
+                this.drain();
+            }
+            else{
+                this.stack[this.stack.length-1].end = {
+                    chunk    : chunk,
+                    encoding : encoding,
+                    cb       : cb
+                };
+            }
+        }
+        else{
+            this.stack[this.stack.length-1].end = {
+                chunk    : chunk,
+                encoding : encoding,
+                cb       : cb
+            };
+            if(!this.isWriting()){
+                this.drain();
+            }
+        }
+    }
+};
 WriteRequestManager.prototype.addStream = function(stream) {
     if(this.isWriting()) {
         process.nextTick(function() {
@@ -182,31 +229,11 @@ WriteRequestManager.prototype.addStream = function(stream) {
     else {
         this.currentSourceStream = stream;
     }
-    this.stack[this.stack.length - 1].push(new StreamWriteRequest(stream));
+    this.push(new StreamWriteRequest(stream));
 
 };
-WriteRequestManager.prototype.isSourceStreamFinished = function() {
-    return this.currentSourceStream && this.currentSourceStream._readableState.ended;
-};
-WriteRequestManager.prototype.drain = function() {
-    var context = this.stack[this.stack.length - 1];
-    context.shift();
-    if(context.length > 0) {
-        this.run(context[0]);
-        if(context[0].sync) {
-            this.drain();
-        }
-    }
-    else if(this.stack.length > 1) {
-        this.stack.pop();
-        this.drain();
-    }
-    else if(this.end) {
-        this.readyStream.end(this.end.chunk, this.end.encoding, this.end.cb);
-    }
-};
 WriteRequestManager.prototype.isWriting = function() {
-    return this.stack[this.stack.length - 1].length > 0;
+    return this.stack[this.stack.length - 1].writeRequest.length > 0;
 };
 function _serializeData(data) {
     if(typeof data == 'object') {
@@ -248,14 +275,6 @@ StreamWriteRequest.prototype.doWrite = function(readyStream) {
 module.exports = function(config, transform) {
     return new ReadyStream(config, transform);
 };
-function _invoke(func,thisArgs,args){
-    if(func){
-        switch(args.length){
-            case 0:
-                func.call()
-        }
-    }
-}
 module.exports.WriteRequest={
     implement:function(definition){
         var WriteRequest=definition.hasOwnProperty("constructor")?definition.constructor:function WriteRequest(){};
