@@ -211,7 +211,7 @@ var HttpData=ReadyStream.WriteRequest.implement({
 上面就是一个异步数据的封装，有了他，那么程序的主要代码结构就变得非常清晰了，基本上全是同步代码。
 ```javascript
 var stream=new ReadyStream();
-stream.put(new HttpWriteRequest('http://www.jd.com/robots.txt'));
+stream.put(new HttpData('http://www.jd.com/robots.txt'));
 stream.put("end");
 stream.end();
 stream.pipe(process.stdout)
