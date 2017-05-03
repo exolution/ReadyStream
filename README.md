@@ -1,7 +1,7 @@
 # ReadyStream
 一个简单易用的数据流封装，让你快速运用stream的强大威力。
 
-##什么是流（What is Stream?）
+## 什么是流（What is Stream?）
 （已经了解stream的可以跳过这一段啰嗦）  
 
 首先，流是一种关于【数据传输和流动】的抽像。早在unix时代，流的概念就已经深入人心，    
@@ -14,42 +14,42 @@
 
 `我的ReadyStream就是对这transform流的一种封装`  
 
-##为什么要用ReadyStream （Why tree newbie?）
+## 为什么要用ReadyStream （Why tree newbie?）
 （讨厌吹牛逼的可以跳过这一段广告）
-####※上手简单
+#### ※上手简单
 ReadyStream 将整个数据相关的业务流程抽象成 [写入]-[处理加工]-[保存]的模式。让你迅速的体验基于stream开发的快感，并且通过对异步写入的封装，引导让你写出更清晰的程序结构。
-####※强大的异步写入/流入
+#### ※强大的异步写入/流入
 ReadyStream对写入操作做了封装，归一化同步写入还是异步写入。写入操作会自动按顺序依次写入，无论是同步的还是异步的（如写入一个文件）。 
 也就是说自动帮你管理前一个写入操作完成后才会执行后续的写入操作。而你只需要写同步风格的代码即可。
 
-####※简单好用的加工处理
+#### ※简单好用的加工处理
 ReadyStream可以很方便的引流(pipe)到一个数据加工函数里。而且可以根据需要帮你积蓄数据，一次性给你。  
 （正常情况下，流肯定是写一点给一点，加工函数会调用多次。积蓄是指等所有的写入都完成，一次性给到加工函数里，加工函数只会调用一次。
-####※完全可以用ReadyStream做一个gulp
+#### ※完全可以用ReadyStream做一个gulp
 没有噱头，没人关注呀~  
 其实我的ReadyStream也并非是为了让你重复造个gulp轮子的。  
 而是更好地在自己的项目中运用流的力量  
 
-#什么是ReadyStream？（What ghosts?）
+# 什么是ReadyStream？（What ghosts?）
 （想快速上手使用的可以跳过这段扯淡）  
 
 ReadyStream是一个链式Transform流封装。提供非常方便的流操作。   
 诸如`写入文件`，`异步写入数据`，`pipe到加工函数`，`预缓存流数据`等。  
-######为什么要是链式的？  
+###### 为什么要是链式的？  
 正常情况下一个可读流通过readable.pipe(dest) 引流到另外一个stream之后 你想继续pipe就只能在这个另外的流(dest)上pipe。
 而ReadyStream则会保持最后一个dest的引用，每次pipe是在基于这个readystream的dest引用，所以可以针对这一个readystream 实例一路pipe管子接到死,当然也同时保留并联pipe的能力（我这里称之为分流bypass）  
-######然而链式有什么用呢？
+###### 然而链式有什么用呢？
 想来想去其实场景并不多（囧rz），一般用于框架中需要暴露一个单例的stream给用户（开发者）。而这个stream又可能经过一系列的管子进行处理，如果用传统pipe就没办法一直基于这个stream进行处理，你必须像接力一样一路追踪下去。  
 在我的MVC框架中，我使用ReadyStream代替了http response，是因为response是个writable只能写数据，而无法pipe进行处理。  
 所以我将ReadyStream暴露给用户可以让用户方便的进行数据写入和处理，而且上面也说了，链式让readystream可以以单例的形式存在，
 因此在各个阶段，无论是开发者还是我的框架只需要处理这个统一的readystream实例就够了。例如在经过了业务中间件之后，后续的中间件都可以基于这一个readyStream进行数据加工(如gzip)   
 
-#如何使用？（How to play?）
+# 如何使用？（How to play?）
 
-####安装
+#### 安装
 npm install ready-stream
 
-#####创建ReadyStream
+##### 创建ReadyStream
 ```javascript
 
 //这样就创建了一个空的ReadyStream
@@ -58,7 +58,7 @@ var stream=new ReadyStream();
 //而且需要你对stream系统有比较深的了解。如流本身的_transform和ObjectMode等配置
 //如有需要请看源码
 ```
-#####写入数据
+##### 写入数据
 
 ```javascript 
 //写入一个文件
@@ -79,7 +79,7 @@ stream.writeFile("./in2.txt");//文件内容为" world"
 var input=Fs.createReadStream('./in3.txt');//文件内容为 " readystream\n"
 input.pipe(stream);//也可以用stream.inflow(input)性质一样
 ```
-######往流中写入数据
+###### 往流中写入数据
 put会等待之前所有的异步写入操作完成之后才开始写入，  
 如果之前没有异步写操作 则会立即（同步）写入  
 所以"hahaha"会等in.txt和 in2.txt都全部写入之后才会写入  
@@ -94,7 +94,7 @@ stream.put("hahaha\n");
  */
 stream.write("sync\n");
 ```
-#####处理加工数据-串联接水管
+##### 处理加工数据-串联接水管
 ```javascript
 stream.pipe(function(chunk,encoding,next){
     //[chunk]:数据块(是一个buffer)[encoding]:数据的编码[next]:执行下一步的回调函数   
@@ -144,7 +144,7 @@ hahaha
 after
  */
 ```
-#####并联接水管（我更喜欢称之为分流）
+##### 并联接水管（我更喜欢称之为分流）
 指定pipe的第三个参数为true打开分流模式，或者直接使用.bypass代替.pipe  
 分流模式实际上就是指并联的接水管，下图会详细说明 
 ![abc](http://77fkpo.com5.z0.glb.clouddn.com/73e5505c8919b92cf9693bfe8854d032.png)
@@ -246,7 +246,7 @@ Http.request({
 ```
 请对比一下 哪种更清晰。
 
-######实例
+###### 实例
 到现在说了这么多 可能你还是不知道readyStream有啥用？
 那好吧，我就实现一个简单的gulp功能来说明吧
 ```javascript
@@ -313,6 +313,6 @@ stream.pipe(Fs.createWriteStream("./pack.min.js"));
 stream.end();
 ```
 
-####联系作者
+#### 联系作者
 如果有什么问题和建议，欢迎来吐槽~~  
 吐槽热线：tanhawk#163.com
